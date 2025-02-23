@@ -1,16 +1,199 @@
-## Hi there 👋
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>鸽子血统树（五分支修正版）</title>
+    <script src="https://cdn.bootcdn.net/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+        svg {
+            border: 1px solid #ddd;
+            background: #f8f9fa;
+        }
+        .node rect {
+            fill: #fff;
+            stroke: #4a90e2;
+            stroke-width: 2.5px;
+            rx: 8px;
+            ry: 8px;
+        }
+        .node text {
+            font: 18px 'Microsoft Yahei', sans-serif;
+            dominant-baseline: middle;
+            font-weight: bold;
+        }
+        .link {
+            fill: none;
+            stroke: #adb5bd;
+            stroke-width: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div style="display: flex; gap: 40px; margin: 20px;">
+        <div id="pedigree-tree1" style="flex: 1;"></div>
+        <div id="pedigree-tree2" style="flex: 1;"></div>
+    </div>
 
-<!--
-**Miss1100/Miss1100** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
+<script>
+// 修正版数据转换函数
+function buildTreeData(data) {
+    const processNode = (node) => {
+        if (!node) return null;
+        // 明确获取所有可能的子节点
+        const children = [];
+        if(node.father) children.push(node.father);
+        if(node.mother) children.push(node.mother);
+        for(let i=1; i<=3; i++){
+            const childKey = `child${i}`;
+            if(node[childKey]) children.push(node[childKey]);
+        }
+        return {
+            name: node.name || `ID: ${node.id}`,
+            children: children.map(processNode).filter(Boolean)
+        };
+    };
+    return processNode(data) || { name: '数据错误' };
+}
 
-Here are some ideas to get you started:
+function initPedigreeTree(containerId) {
+    // 结构化测试数据
+    const testData = {
+        id: "CN-2023-0001",
+        name: "王者",
+        father: {
+            id: "CN-2022-0012",
+            name: "雄鹰",
+            father: { 
+                id: "CN-2021-0003", 
+                name: "蓝天",
+                child1: {id: "C1", name: "分支1-1"},
+                child2: {id: "C2", name: "分支1-2"}
+            },
+            mother: { 
+                id: "CN-2021-0004", 
+                name: "白云",
+                child1: {id: "C3", name: "分支2-1"}
+            },
+            child1: {id: "C4", name: "分支3"},
+            child2: {id: "C5", name: "分支4"},
+            child3: {id: "C6", name: "分支5"}
+        },
+        mother: {
+            id: "CN-2022-0015",
+            name: "凤凰",
+            father: { 
+                id: "CN-2021-0006", 
+                name: "烈焰",
+                child1: {id: "C7", name: "分支6"}
+            },
+            child1: {id: "C8", name: "分支7"},
+            child2: {id: "C9", name: "分支8"}
+        },
+        child1: {id: "C10", name: "分支9"},
+        child2: {id: "C11", name: "分支10"}
+    };
 
-- 🔭 I’m currently working on ...
-- 🌱 I’m currently learning ...
-- 👯 I’m looking to collaborate on ...
-- 🤔 I’m looking for help with ...
-- 💬 Ask me about ...
-- 📫 How to reach me: ...
-- 😄 Pronouns: ...
-- ⚡ Fun fact: ...
--->
+    const container = document.getElementById(containerId);
+    const width = Math.max(container.clientWidth, 1600);  // 确保最小宽度
+    const height = Math.max(800, window.innerHeight * 0.9);
+
+    const svg = d3.select(container)
+        .append("svg")
+        .attr("width", width)
+        .attr("height", height)
+        .append("g")
+        .attr("transform", "translate(150,100)");  // 增加左侧边距
+
+    const root = d3.hierarchy(buildTreeData(testData));
+    
+    // 修正树布局参数
+    const treeLayout = d3.tree()
+        .size([height - 200, width - 300])  // 调整布局区域
+        .separation((a, b) => a.parent === b.parent ? 2 : 3);  // 增加节点间距
+
+    treeLayout(root);
+
+    // 绘制连线（修正坐标映射）
+    const linkGenerator = d3.linkHorizontal()
+        .x(d => d.y)  // 交换坐标轴
+        .y(d => d.x);
+
+    svg.selectAll(".link")
+        .data(root.links())
+        .join("path")
+        .attr("class", "link")
+        .attr("d", linkGenerator)
+        .attr("stroke-opacity", 0.6);
+
+    // 绘制节点（优化布局）
+    const node = svg.selectAll(".node")
+        .data(root.descendants())
+        .join("g")
+        .attr("class", "node")
+        .attr("transform", d => `translate(${d.y},${d.x})`);
+
+    node.append("rect")
+        .attr("width", d => d.data.name.length * 12 + 40) // 增加左右边距
+        .attr("height", 48)  // 增加高度
+        .attr("x", d => -((d.data.name.length * 12 + 40)/2)) // 居中
+        .attr("y", -24)  // 调整y位置
+        .style("stroke-width", 2);
+
+    // 优化文本布局
+    node.append("text")
+        .attr("dy", "0.3em")  // 精确调整垂直居中
+        .style("text-anchor", "middle")  // 水平居中
+        .style("dominant-baseline", "middle")  // 显式设置垂直居中
+        .style("font-size", "18px")
+        .attr("x", 0)  // 确保水平居中
+        .text(d => d.data.name);
+
+    // 自动居中算法修正
+    const xValues = root.descendants().map(d => d.x);
+    const yValues = root.descendants().map(d => d.y);
+    const xMin = Math.min(...xValues);
+    const xMax = Math.max(...xValues);
+    const yMin = Math.min(...yValues);
+    const yMax = Math.max(...yValues);
+
+    const tx = (width - (yMax - yMin)) / 2 - yMin;
+    const ty = (height - (xMax - xMin)) / 2 - xMin;
+    
+    svg.attr("transform", `translate(${tx},${ty + 40})`);
+}
+
+// 增强错误处理
+try {
+    initPedigreeTree('pedigree-tree1');
+    initPedigreeTree('pedigree-tree2');
+} catch (error) {
+    const errorMsg = `错误类型：${error.name}\n错误信息：${error.message}\n调用栈：${error.stack}`;
+    console.error("运行错误:", error);
+    document.getElementById('pedigree-tree1').innerHTML = `
+        <div style="color: red; padding: 20px; white-space: pre-wrap;">
+            <h3>致命错误：</h3>
+            ${errorMsg}
+            <p>建议检查：\n1. 数据完整性\n2. 网络连接\n3. 控制台日志(F12)</p>
+        </div>`;
+    document.getElementById('pedigree-tree2').innerHTML = `
+        <div style="color: red; padding: 20px; white-space: pre-wrap;">
+            <h3>致命错误：</h3>
+            ${errorMsg}
+            <p>建议检查：\n1. 数据完整性\n2. 网络连接\n3. 控制台日志(F12)</p>
+        </div>`;
+}
+
+// 优化resize处理
+let resizeTimer;
+window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+        d3.select('#pedigree-tree1').selectAll('*').remove();
+        d3.select('#pedigree-tree2').selectAll('*').remove();
+        initPedigreeTree('pedigree-tree1');
+        initPedigreeTree('pedigree-tree2');
+    }, 200);  // 增加防抖处理
+});
+</script>
+</body>
+</html>
